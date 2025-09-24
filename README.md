@@ -1,7 +1,7 @@
 # Leons3DRenderingEngine
 
-Test
+## How to build
 
-
-##test123
+```sudo chmod +x "./run.sh"
+./run.sh```
 
