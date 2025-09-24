@@ -8,3 +8,6 @@ obj/
 # OS files
 .DS_Store
 Thumbs.db
+
+commit.sh
+.gitinore

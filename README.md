@@ -2,6 +2,10 @@
 
 ## How to build
 
-```sudo chmod +x "./run.sh"
-./run.sh```
+```bash
+sudo chmod +x "./run.sh"
+./run.sh
+```
+
+test123
 
