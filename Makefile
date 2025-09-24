@@ -9,7 +9,7 @@ SRC = src/main.cpp
 # Output binary
 TARGET = bin/game
 
-# Create bin directory if it doesn't exist
+# Create bin directory if it doesn't exist1
 $(shell mkdir -p bin)
 
 # Default target
