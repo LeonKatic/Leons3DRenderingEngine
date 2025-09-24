@@ -1,0 +1,10 @@
+# Ignore VSCode settings folder
+.vscode/
+
+# Ignore compiled binaries
+bin/
+obj/
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
