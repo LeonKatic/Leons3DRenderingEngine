@@ -8,14 +8,14 @@ sudo chmod +x "./run.sh"
 ```
 ### Instructions
 
-throw balls with left click
+- throw balls with left click
 
-wasd for movement and mouse
+- wasd for movement and mouse
 
-shift to go down
+- shift to go down
 
-space to go up
+- space to go up
 
-press p to freeze or unfreeze time
+- press p to freeze or unfreeze time
 
 
