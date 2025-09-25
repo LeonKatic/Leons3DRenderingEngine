@@ -338,7 +338,8 @@ public:
     }
   }
 };
-// Sphere (Kugla) - wireframe made from latitude/longitude lines
+
+//made using chat gpt
 class Kugla : public Graf {
 public:
   int rings;   // latitude divisions (from pole to pole)
