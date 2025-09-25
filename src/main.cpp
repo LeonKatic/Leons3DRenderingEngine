@@ -83,17 +83,41 @@ public:
     y = vrh.y;
     z = vrh.z;
   }
+  Vektor operator+(const Vektor &other) const {
+    return Vektor(this->x + other.x, this->y + other.y, this->z + other.z);
+  }
+  Vektor operator-(const Vektor &other) const {
+    return Vektor(this->x - other.x, this->y - other.y, this->z - other.z);
+  }
+
+  double operator*(const Vektor &other) const {
+    return this->x * other.x + this->y * other.y + this->z * other.z;
+  }
+
+  Vektor operator*(double a) const {
+    return Vektor(a * this->x, a * this->y, a * this->z);
+  }
 
   void printVektor() {
     cout << this->x << " " << this->y << " " << this->z << endl;
   }
 };
+Vektor operator*(double a, const Vektor &v) {
+  return v * a; // reuse member operator*
+}
 Vrh::Vrh(const Vektor &vektor) {
   this->x = vektor.x;
   this->y = vektor.y;
   this->z = vektor.z;
 }
 Vektor oduzmi(Vrh a, Vrh b) {
+  Vektor rez = Vektor();
+  rez.x = b.x - a.x;
+  rez.y = b.y - a.y;
+  rez.z = b.z - a.z;
+  return rez;
+}
+Vektor oduzmiVek(Vektor a, Vektor b) {
   Vektor rez = Vektor();
   rez.x = b.x - a.x;
   rez.y = b.y - a.y;
@@ -107,13 +131,13 @@ Vrh zbroji(Vrh a, Vrh b) {
   rez.z = b.z + a.z;
   return rez;
 }
-Vektor zbrojivek(Vektor a, Vektor b) {
+/*Vektor zbrojivek(Vektor a, Vektor b) {
   Vektor rez = Vektor();
   rez.x = b.x + a.x;
   rez.y = b.y + a.y;
   rez.z = b.z + a.z;
   return rez;
-}
+}*/
 Vrh skalar(double a, Vrh vrh) {
   Vrh rez = Vrh();
   rez.x = a * vrh.x;
@@ -136,12 +160,16 @@ Vektor cross(Vektor a, Vektor b) {
   rez.z = a.x * b.y - a.y * b.x;
   return rez;
 }
+double udaljenost(Vrh a, Vrh b) {
+  double dx = a.x - b.x;
+  double dy = a.y - b.y;
+  double dz = a.z - b.z;
+  return sqrt(dx * dx + dy * dy + dz * dz);
+}
 
 double dot(Vektor a, Vektor b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 double magnitude(Vektor v) { return sqrt(v.x * v.x + v.y * v.y + v.z * v.z); }
-double udaljenost(Vektor n, Vrh p0, Vrh p) {
-  return dot(n, oduzmi(p0, p)) / magnitude(n);
-}
+
 void normaliziraj(Vektor &v) {
   double m = magnitude(v);
   if (m > 0) {
@@ -268,24 +296,24 @@ public:
 class Graf {
 public:
   double t = 0;
+  double mass;
   vector<Vrh> vrhovi;
   vector<pair<int, int>> bridovi;
-  double v_x;
-  double v_y;
-  double v_z;
+  Vektor velocity;
 
-  Graf(double v_x, double v_y, double v_z) {
-    this->v_x = v_x;
-    this->v_y = v_y;
-    this->v_z = v_z;
+  Graf(double mass, double v_x, double v_y, double v_z) {
+    this->mass = mass;
+    this->velocity.x = v_x;
+    this->velocity.y = v_y;
+    this->velocity.z = v_z;
   }
   Graf() {
-    this->v_x = 0;
-    this->v_y = 0;
-    this->v_z = 0;
+    this->velocity.x = 0;
+    this->velocity.y = 0;
+    this->velocity.z = 0;
   }
 
-  void shift(double x, double y, double z) {
+  virtual void shift(double x, double y, double z) {
     for (int i = 0; i < vrhovi.size(); i++) {
       vrhovi[i].x += x;
       vrhovi[i].y += y;
@@ -316,22 +344,23 @@ public:
   int rings;   // latitude divisions (from pole to pole)
   int sectors; // longitude divisions (around)
   double radius;
-  double cx, cy, cz;
+  Vrh center;
 
   // vx,vy,vz - initial velocity (same style as Kocka)
   // radius - sphere radius
   // cx,cy,cz - center coordinates
   // rings - latitude subdivisions (>=2), sectors - longitude subdivisions (>=3)
-  Kugla(double vx, double vy, double vz, double radius, double cx, double cy,
-        double cz, int rings = 16, int sectors = 24) {
-    this->v_x = vx;
-    this->v_y = vy;
-    this->v_z = vz;
+  Kugla(double mass, double vx, double vy, double vz, double radius, double cx,
+        double cy, double cz, int rings = 16, int sectors = 24) {
+    this->mass = mass;
+    this->velocity.x = vx;
+    this->velocity.y = vy;
+    this->velocity.z = vz;
 
     this->radius = radius;
-    this->cx = cx;
-    this->cy = cy;
-    this->cz = cz;
+    this->center.x = cx;
+    this->center.y = cy;
+    this->center.z = cz;
     this->rings = max(2, rings);
     this->sectors = max(3, sectors);
 
@@ -374,20 +403,36 @@ public:
       }
     }
   }
+  void shift(double x, double y, double z) override {
+    this->center.x += x;
+    this->center.y += y;
+    this->center.z += z;
+    for (int i = 0; i < vrhovi.size(); i++) {
+      vrhovi[i].x += x;
+      vrhovi[i].y += y;
+      vrhovi[i].z += z;
+    }
+  }
 };
 
 class Scena {
 public:
-  vector<Graf> grafovi;
+  vector<Graf> static_grafovi;
+  vector<Kugla> moving_grafovi;
 
   double g;
   double t = 0;
   Scena(double g) { this->g = g; }
 
-  void addToScene(Graf graf) { grafovi.push_back(graf); }
+  void addToStaticScene(Graf graf) { static_grafovi.push_back(graf); }
+  void addToMovingScene(Kugla graf) { moving_grafovi.push_back(graf); }
   void renderScene(Kamera &kamera, int delay) {
-    for (int i = 0; i < grafovi.size(); i++) {
-      grafovi[i].renderGraf(kamera);
+    for (int i = 0; i < static_grafovi.size(); i++) {
+      static_grafovi[i].renderGraf(kamera);
+    }
+
+    for (int i = 0; i < moving_grafovi.size(); i++) {
+      moving_grafovi[i].renderGraf(kamera);
     }
     SDL_RenderPresent(kamera.renderer);
     SDL_Delay(delay);
@@ -411,14 +456,36 @@ public:
     kamera.spojiTocke2dClipped(a, b, 0, 0, 255);
   }
   void animateScene() {
+    // detect collision
 
-    for (int i = 1; i < grafovi.size(); i++) {
-      grafovi[i].shift(grafovi[i].v_x, grafovi[i].v_y,
-                       grafovi[i].v_z - g * grafovi[i].t);
-      grafovi[i].t += 0.01;
+    for (int i = 0; i < moving_grafovi.size(); i++) {
+      for (int j = i + 1; j < moving_grafovi.size(); j++) {
+        if (udaljenost(moving_grafovi[i].center, moving_grafovi[j].center) <=
+            moving_grafovi[i].radius + moving_grafovi[j].radius) {
+          double m1 = moving_grafovi[i].mass;
+          double m2 = moving_grafovi[j].mass;
+          Vektor v1 = moving_grafovi[i].velocity;
+          Vektor v2 = moving_grafovi[j].velocity;
+          moving_grafovi[i].velocity = v1 - 2 * m2 / (m1 + m2) * (v1 - v2);
+          moving_grafovi[j].velocity = v2 + 2 * m1 / (m1 + m2) * (v1 - v2);
+        }
+      }
+    }
+
+    for (int i = 0; i < moving_grafovi.size(); i++) {
+      cout << i << " ";
+      moving_grafovi[i].velocity.printVektor();
+      // moving_grafovi[i].center.printVrh();
+      moving_grafovi[i].shift(moving_grafovi[i].velocity.x,
+                              moving_grafovi[i].velocity.y,
+                              moving_grafovi[i].velocity.z);
+      // force of gravity
+      moving_grafovi[i].velocity.z -= g * moving_grafovi[i].t;
+
+      // increment time
+      moving_grafovi[i].t += 0.001;
     }
   }
-  
 };
 
 class Kocka : public Graf {
@@ -430,9 +497,9 @@ public:
 
   Kocka(double v_x, double v_y, double v_z, double velicina, double xsred,
         double ysred, double zsred) {
-    this->v_x = v_x;
-    this->v_y = v_y;
-    this->v_z = v_z;
+    this->velocity.x = v_x;
+    this->velocity.y = v_y;
+    this->velocity.z = v_z;
     int a[8][3] = {{1, 1, 1},  {1, 1, -1},  {1, -1, 1},  {1, -1, -1},
                    {-1, 1, 1}, {-1, 1, -1}, {-1, -1, 1}, {-1, -1, -1}};
     for (int i = 0; i < 8; i++) {
@@ -458,6 +525,7 @@ int main() {
       Kamera(Vrh(684.724, -2781.49, 1880), Vektor(-1, 0, 0), 900, renderer);
 
   bool running = true;
+  bool freeze = false;
   SDL_Event event;
   double rotationSpeed = 1;
   Scena scena(9.81);
@@ -478,15 +546,17 @@ int main() {
   double pod = 0;
   int f = 0;
   Kocka kocka1(0, 0, 0, 10000, 0, 0, 0);
-  scena.addToScene(kocka1);
+  scena.addToStaticScene(kocka1);
 
-  Kugla kugla1(-30, 0, 0, 1000, 900, 0, 500, 5,
-                   10);
-  scena.addToScene(kugla1);
+  /*Kugla kugla1(100, -30, 0, 0, 500, 2100, 0, 500, 5, 10);
+  scena.addToMovingScene(kugla1);
 
-  Kugla kugla2(30, 0, 0, 100, -900, -40, 500, 5,
-                   10);
-  scena.addToScene(kugla2);
+  Kugla kugla2(200, 30, 0, 0, 500, -2100, -40, 500, 5, 10);
+  scena.addToMovingScene(kugla2);
+
+  Kugla kugla3(200, 30, 0, 0, 500, 0, 0, 0, 5, 10);
+  scena.addToMovingScene(kugla3);*/
+
   while (running) {
     /*if (velocity < 1000) {
       velocity += (double)1 / 5;
@@ -502,21 +572,37 @@ int main() {
     scena.grafovi[0].shift(5, 0, 0);
     t++;*/
 
-    /*f++;
-    if (f > 5) {
+    f++;
+    if (f > 50) {
       cout << f << endl;
+      Kugla kugla1(100, -30, 0, 0, 200, 2100, 0, 500, 5, 10);
+      scena.addToMovingScene(kugla1);
+
  
-      Kugla kugla1(rand() % 90 - 45, rand() % 90 - 45, rand() % 100, 200, 0, 0, 0, 5,
-                   10); // vx,vy,vz, radius, cx,cy,cz, rings, sectors
-      scena.addToScene(kugla1);
+      /*Kugla kugla1(rand()%400,rand() % 90 - 45, rand() % 90 - 45, rand() %
+  100, rand() % 200+100, rand() % 900 - 450, rand() % 900 - 450, rand() % 900 -
+  450, 5, 10);*/ // vx,vy,vz, radius, cx,cy,cz, rings, sectors
+      scena.addToMovingScene(kugla1);
+      
       f = 0;
-    }*/
+    }
 
     while (SDL_PollEvent(&event)) {
       if (event.type == SDL_QUIT) {
         running = false;
       } else if (event.type == SDL_KEYDOWN &&
                  event.key.keysym.sym == SDLK_ESCAPE) {
+        running = false;
+      } else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_p) {
+        if (freeze == true)
+          freeze = false;
+        else {
+          freeze = true;
+        }
+      } else if (event.type == SDL_MOUSEBUTTONDOWN &&
+                 event.button.button == SDL_BUTTON_LEFT) {
+        Kugla kugla(1000, -100*kamera.n.x, -100*kamera.n.y, -100*kamera.n.z, 200, kamera.a.x, kamera.a.y, kamera.a.z, 5, 10);
+        scena.addToMovingScene(kugla);
       }
     }
 
@@ -566,10 +652,12 @@ int main() {
       theta = 0.0001;
     }
     kamera.rotate(fi, theta);
-    cout<<fi<<" "<<theta<<endl;
-    kamera.a.printVrh();
+    // cout << fi << " " << theta << endl;
+    // kamera.a.printVrh();
     scena.nacrtajKordinate(kamera);
-    scena.animateScene();
+    if (freeze == false) {
+      scena.animateScene();
+    }
     scena.renderScene(kamera, 16);
   }
 
