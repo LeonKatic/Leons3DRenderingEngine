@@ -461,25 +461,36 @@ public:
 
     for (int i = 0; i < moving_grafovi.size(); i++) {
       for (int j = i + 1; j < moving_grafovi.size(); j++) {
-        double dist=udaljenost(moving_grafovi[i].center, moving_grafovi[j].center);
-        double delta=dist-(moving_grafovi[i].radius + moving_grafovi[j].radius);
-        if (delta <0) {
+        double dist =
+            udaljenost(moving_grafovi[i].center, moving_grafovi[j].center);
+        double delta =
+            dist - (moving_grafovi[i].radius + moving_grafovi[j].radius);
+        if (delta < 0) {
+
           double m1 = moving_grafovi[i].mass;
           double m2 = moving_grafovi[j].mass;
+          Vektor n_col =
+              oduzmi(moving_grafovi[j].center, moving_grafovi[i].center);
+          normaliziraj(n_col);
+
           Vektor v1 = moving_grafovi[i].velocity;
           Vektor v2 = moving_grafovi[j].velocity;
-          moving_grafovi[i].velocity = 0.9*(v1 - 2 * m2 / (m1 + m2) * (v1 - v2));
-          moving_grafovi[j].velocity = 0.9*(v2 + 2 * m1 / (m1 + m2) * (v1 - v2));
+          moving_grafovi[i].velocity = 0.9*(v1 - 2 * m2 / (m1 + m2) *
+                                                ((v1 - v2) * n_col) * n_col *
+                                                (1 / (n_col * n_col)));
+          moving_grafovi[j].velocity =0.9*( v2 - 2 * m1 / (m1 + m2) *
+                                                ((v2 - v1) * n_col) * n_col *
+                                                (1 / (n_col * n_col)));
+
         }
       }
     }
-    //collsion on plane z=0;
-    for (int i = 0; i < moving_grafovi.size(); i++){
-      if(moving_grafovi[i].minVrh().z<=0){
-        moving_grafovi[i].velocity.z*=-0.9;
+    // collsion on plane z=0;
+    for (int i = 0; i < moving_grafovi.size(); i++) {
+      if (moving_grafovi[i].minVrh().z <= 0) {
+        moving_grafovi[i].velocity.z *= -0.9;
       }
     }
-    
 
     for (int i = 0; i < moving_grafovi.size(); i++) {
       cout << i << " ";
@@ -489,7 +500,7 @@ public:
                               moving_grafovi[i].velocity.y * deltaTime * 60,
                               moving_grafovi[i].velocity.z * deltaTime * 60);
       // force of gravity
-      moving_grafovi[i].velocity.z -= g *deltaTime;
+      moving_grafovi[i].velocity.z -= g * deltaTime;
 
       // increment time
       moving_grafovi[i].t += 0.01;
@@ -535,7 +546,7 @@ int main() {
 
   bool running = true;
   bool freeze = false;
-  int sprinting=1;
+  int sprinting = 1;
   SDL_Event event;
   double rotationSpeed = 1;
   Scena scena(9.81);
@@ -613,32 +624,31 @@ int main() {
         }
       } else if (event.type == SDL_MOUSEBUTTONDOWN &&
                  event.button.button == SDL_BUTTON_LEFT) {
-        Kugla kugla(1000, -30 * kamera.n.x, -30 * kamera.n.y,
-                    -30 * kamera.n.z, 200, kamera.a.x, kamera.a.y, kamera.a.z,
-                    5, 10);
+        Kugla kugla(1000, -30 * kamera.n.x, -30 * kamera.n.y, -30 * kamera.n.z,
+                    200, kamera.a.x, kamera.a.y, kamera.a.z, 5, 10);
         scena.addToMovingScene(kugla);
       }
     }
 
     const Uint8 *state = SDL_GetKeyboardState(NULL);
 
-    if(state[SDL_SCANCODE_LCTRL]){
-      sprinting=5;
-    }else{
-      sprinting=1;
+    if (state[SDL_SCANCODE_LCTRL]) {
+      sprinting = 5;
+    } else {
+      sprinting = 1;
     }
     if (state[SDL_SCANCODE_W])
-      kamera.move(-brzina1*sprinting, 0, 0);
+      kamera.move(-brzina1 * sprinting, 0, 0);
     if (state[SDL_SCANCODE_S])
-      kamera.move(brzina1*sprinting, 0, 0);
+      kamera.move(brzina1 * sprinting, 0, 0);
     if (state[SDL_SCANCODE_A])
-      kamera.move(0, brzina1*sprinting, 0);
+      kamera.move(0, brzina1 * sprinting, 0);
     if (state[SDL_SCANCODE_D])
-      kamera.move(0, -brzina1*sprinting, 0);
+      kamera.move(0, -brzina1 * sprinting, 0);
     if (state[SDL_SCANCODE_LSHIFT])
-      kamera.move(0, 0, -brzina1*sprinting);
+      kamera.move(0, 0, -brzina1 * sprinting);
     if (state[SDL_SCANCODE_SPACE])
-      kamera.move(0, 0, brzina1*sprinting);
+      kamera.move(0, 0, brzina1 * sprinting);
 
     if (event.type == SDL_MOUSEMOTION) {
       SDL_GetRelativeMouseState(&deltaX, &deltaY);
