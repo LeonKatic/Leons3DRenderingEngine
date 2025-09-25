@@ -6,6 +6,16 @@
 sudo chmod +x "./run.sh"
 ./run.sh
 ```
+### Instructions
 
-test123
+throw balls with left click
+
+wasd for movement and mouse
+
+shift to go down
+
+space to go up
+
+press p to freeze or unfreeze time
+
 
