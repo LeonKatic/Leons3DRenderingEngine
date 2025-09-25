@@ -324,7 +324,7 @@ public:
   Vrh minVrh() {
     Vrh min = this->vrhovi[0];
     for (int i = 0; i < this->vrhovi.size(); i++) {
-      if (this->vrhovi[i].z > min.z)
+      if (this->vrhovi[i].z < min.z)
         min = this->vrhovi[i];
     }
     return min;
@@ -339,7 +339,7 @@ public:
   }
 };
 
-//made using chat gpt
+// made using chat gpt
 class Kugla : public Graf {
 public:
   int rings;   // latitude divisions (from pole to pole)
@@ -456,35 +456,43 @@ public:
     b = kamera.Tocka3d_To_Tocka2d(z);
     kamera.spojiTocke2dClipped(a, b, 0, 0, 255);
   }
-  void animateScene() {
+  void animateScene(double deltaTime) {
     // detect collision
 
     for (int i = 0; i < moving_grafovi.size(); i++) {
       for (int j = i + 1; j < moving_grafovi.size(); j++) {
-        if (udaljenost(moving_grafovi[i].center, moving_grafovi[j].center) <=
-            moving_grafovi[i].radius + moving_grafovi[j].radius) {
+        double dist=udaljenost(moving_grafovi[i].center, moving_grafovi[j].center);
+        double delta=dist-(moving_grafovi[i].radius + moving_grafovi[j].radius);
+        if (delta <0) {
           double m1 = moving_grafovi[i].mass;
           double m2 = moving_grafovi[j].mass;
           Vektor v1 = moving_grafovi[i].velocity;
           Vektor v2 = moving_grafovi[j].velocity;
-          moving_grafovi[i].velocity = v1 - 2 * m2 / (m1 + m2) * (v1 - v2);
-          moving_grafovi[j].velocity = v2 + 2 * m1 / (m1 + m2) * (v1 - v2);
+          moving_grafovi[i].velocity = 0.9*(v1 - 2 * m2 / (m1 + m2) * (v1 - v2));
+          moving_grafovi[j].velocity = 0.9*(v2 + 2 * m1 / (m1 + m2) * (v1 - v2));
         }
       }
     }
+    //collsion on plane z=0;
+    for (int i = 0; i < moving_grafovi.size(); i++){
+      if(moving_grafovi[i].minVrh().z<=0){
+        moving_grafovi[i].velocity.z*=-0.9;
+      }
+    }
+    
 
     for (int i = 0; i < moving_grafovi.size(); i++) {
       cout << i << " ";
       moving_grafovi[i].velocity.printVektor();
       // moving_grafovi[i].center.printVrh();
-      moving_grafovi[i].shift(moving_grafovi[i].velocity.x,
-                              moving_grafovi[i].velocity.y,
-                              moving_grafovi[i].velocity.z);
+      moving_grafovi[i].shift(moving_grafovi[i].velocity.x * deltaTime * 60,
+                              moving_grafovi[i].velocity.y * deltaTime * 60,
+                              moving_grafovi[i].velocity.z * deltaTime * 60);
       // force of gravity
-      moving_grafovi[i].velocity.z -= g * moving_grafovi[i].t;
+      moving_grafovi[i].velocity.z -= g *deltaTime;
 
       // increment time
-      moving_grafovi[i].t += 0.001;
+      moving_grafovi[i].t += 0.01;
     }
   }
 };
@@ -527,6 +535,7 @@ int main() {
 
   bool running = true;
   bool freeze = false;
+  int sprinting=1;
   SDL_Event event;
   double rotationSpeed = 1;
   Scena scena(9.81);
@@ -537,7 +546,7 @@ int main() {
   double fi = -82.6;
   double theta = 62.8;
   double brzina = 1;
-  double brzina1 = 10;
+  double brzina1 = 20;
   SDL_SetRelativeMouseMode(SDL_TRUE);
   int deltaX;
   int deltaY;
@@ -557,7 +566,9 @@ int main() {
 
   Kugla kugla3(200, 30, 0, 0, 500, 0, 0, 0, 5, 10);
   scena.addToMovingScene(kugla3);*/
-
+  Uint64 NOW = SDL_GetPerformanceCounter();
+  Uint64 LAST = 0;
+  double deltaTime = 0;
   while (running) {
     /*if (velocity < 1000) {
       velocity += (double)1 / 5;
@@ -571,22 +582,22 @@ int main() {
     }
 
     scena.grafovi[0].shift(5, 0, 0);
-    t++;*/
+    t++;
+    if (freeze == false) {
+      f++;
+      if (f > 50) {
+        cout << f << endl;
+        Kugla kugla1(100, -30, 0, 0, 200, 2100, 0, 500, 5, 10);
+        scena.addToMovingScene(kugla1);
 
-    f++;
-    if (f > 50) {
-      cout << f << endl;
-      Kugla kugla1(100, -30, 0, 0, 200, 2100, 0, 500, 5, 10);
-      scena.addToMovingScene(kugla1);
+        Kugla kugla1(rand()%400,rand() % 90 - 45, rand() % 90 - 45, rand() %
+    100, rand() % 200+100, rand() % 900 - 450, rand() % 900 - 450, rand() % 900
+    - 450, 5, 10); // vx,vy,vz, radius, cx,cy,cz, rings, sectors
+        scena.addToMovingScene(kugla1);
 
- 
-      /*Kugla kugla1(rand()%400,rand() % 90 - 45, rand() % 90 - 45, rand() %
-  100, rand() % 200+100, rand() % 900 - 450, rand() % 900 - 450, rand() % 900 -
-  450, 5, 10);*/ // vx,vy,vz, radius, cx,cy,cz, rings, sectors
-      scena.addToMovingScene(kugla1);
-      
-      f = 0;
-    }
+        f = 0;
+      }
+    }*/
 
     while (SDL_PollEvent(&event)) {
       if (event.type == SDL_QUIT) {
@@ -602,36 +613,32 @@ int main() {
         }
       } else if (event.type == SDL_MOUSEBUTTONDOWN &&
                  event.button.button == SDL_BUTTON_LEFT) {
-        Kugla kugla(1000, -100*kamera.n.x, -100*kamera.n.y, -100*kamera.n.z, 200, kamera.a.x, kamera.a.y, kamera.a.z, 5, 10);
+        Kugla kugla(1000, -30 * kamera.n.x, -30 * kamera.n.y,
+                    -30 * kamera.n.z, 200, kamera.a.x, kamera.a.y, kamera.a.z,
+                    5, 10);
         scena.addToMovingScene(kugla);
       }
     }
 
     const Uint8 *state = SDL_GetKeyboardState(NULL);
-    if (state[SDL_SCANCODE_UP]) {
-      if (theta > 0.0001 + brzina)
-        theta -= brzina;
+
+    if(state[SDL_SCANCODE_LCTRL]){
+      sprinting=5;
+    }else{
+      sprinting=1;
     }
-    if (state[SDL_SCANCODE_DOWN]) {
-      if (theta < 179.9999 - brzina)
-        theta += brzina;
-    }
-    if (state[SDL_SCANCODE_RIGHT])
-      fi -= brzina;
-    if (state[SDL_SCANCODE_LEFT])
-      fi += brzina;
     if (state[SDL_SCANCODE_W])
-      kamera.move(-brzina1, 0, 0);
+      kamera.move(-brzina1*sprinting, 0, 0);
     if (state[SDL_SCANCODE_S])
-      kamera.move(brzina1, 0, 0);
+      kamera.move(brzina1*sprinting, 0, 0);
     if (state[SDL_SCANCODE_A])
-      kamera.move(0, brzina1, 0);
+      kamera.move(0, brzina1*sprinting, 0);
     if (state[SDL_SCANCODE_D])
-      kamera.move(0, -brzina1, 0);
+      kamera.move(0, -brzina1*sprinting, 0);
     if (state[SDL_SCANCODE_LSHIFT])
-      kamera.move(0, 0, -brzina1);
+      kamera.move(0, 0, -brzina1*sprinting);
     if (state[SDL_SCANCODE_SPACE])
-      kamera.move(0, 0, brzina1);
+      kamera.move(0, 0, brzina1*sprinting);
 
     if (event.type == SDL_MOUSEMOTION) {
       SDL_GetRelativeMouseState(&deltaX, &deltaY);
@@ -655,9 +662,16 @@ int main() {
     kamera.rotate(fi, theta);
     // cout << fi << " " << theta << endl;
     // kamera.a.printVrh();
+
     scena.nacrtajKordinate(kamera);
+    LAST = NOW;
+    NOW = SDL_GetPerformanceCounter();
+    deltaTime =
+        (double)((NOW - LAST) * 1000 / (double)SDL_GetPerformanceFrequency());
+    deltaTime /= 1000;
+
     if (freeze == false) {
-      scena.animateScene();
+      scena.animateScene(deltaTime);
     }
     scena.renderScene(kamera, 16);
   }
