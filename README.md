@@ -13,5 +13,4 @@ sudo chmod +x "./run.sh"
 - shift to go down
 - space to go up
 - press p to freeze or unfreeze time
-
-
+- balls can colide with each other
