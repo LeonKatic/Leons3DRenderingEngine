@@ -457,6 +457,17 @@ public:
     kamera.spojiTocke2dClipped(a, b, 0, 0, 255);
   }
   void animateScene(double deltaTime) {
+
+    for (int i = 0; i < moving_grafovi.size(); i++) {
+
+      moving_grafovi[i].velocity.printVektor();
+      // moving_grafovi[i].center.printVrh();
+      moving_grafovi[i].shift(moving_grafovi[i].velocity.x * deltaTime * 60,
+                              moving_grafovi[i].velocity.y * deltaTime * 60,
+                              moving_grafovi[i].velocity.z * deltaTime * 60);
+      // force of gravity
+      moving_grafovi[i].velocity.z -= g * deltaTime;
+    }
     // detect collision
 
     for (int i = 0; i < moving_grafovi.size(); i++) {
@@ -465,30 +476,30 @@ public:
             udaljenost(moving_grafovi[i].center, moving_grafovi[j].center);
         double delta =
             dist - (moving_grafovi[i].radius + moving_grafovi[j].radius);
-        if (delta < 0) {
-
+        if (delta < -1e-6) {
           double m1 = moving_grafovi[i].mass;
           double m2 = moving_grafovi[j].mass;
-          double m_uk =m1+m2;
+          double m_uk = m1 + m2;
+
           Vektor n_col =
               oduzmi(moving_grafovi[j].center, moving_grafovi[i].center);
           normaliziraj(n_col);
 
           Vektor v1 = moving_grafovi[i].velocity;
           Vektor v2 = moving_grafovi[j].velocity;
-          moving_grafovi[i].velocity =
-              0.9 * (v1 - 2 * m2 / (m_uk) * ((v1 - v2) * n_col) * n_col *
-                              (1 / (n_col * n_col)));
-          moving_grafovi[j].velocity =
-              0.9 * (v2 - 2 * m1 / (m_uk) * ((v2 - v1) * n_col) * n_col *
-                              (1 / (n_col * n_col)));
 
-          
-          double correctionFactor = 1; 
+          // elastic collision
+          double v1n = (v1 * n_col);
+          double v2n = (v2 * n_col);
 
+          double p = 2.0 * (v1n - v2n) / (m1 + m2);
+
+          moving_grafovi[i].velocity = v1 - n_col * (p * m2);
+          moving_grafovi[j].velocity = v2 + n_col * (p * m1);
+
+          double correctionFactor = 0.5;
           Vektor correction = n_col * (abs(delta) * correctionFactor);
 
-          // shift centers apart
           moving_grafovi[i].shift(-correction.x * (m2 / m_uk),
                                   -correction.y * (m2 / m_uk),
                                   -correction.z * (m2 / m_uk));
@@ -498,125 +509,93 @@ public:
         }
       }
     }
-  
+
     // collsion on plane z=0;
     for (int i = 0; i < moving_grafovi.size(); i++) {
       if (moving_grafovi[i].minVrh().z <= 0) {
         moving_grafovi[i].velocity.z *= -0.9;
       }
     }
+  }
+  void animateSceneCHATGPT(double deltaTime) {
+    const double restitution =
+        0.9;                    // 1.0 = perfectly elastic, <1 = damped bounce
+    const double percent = 0.2; // positional correction strength (20%)
+    const double slop = 0.01;   // penetration tolerance
 
+    // --- integrate motion (gravity + movement) ---
     for (int i = 0; i < moving_grafovi.size(); i++) {
-      cout << i << " ";
-      moving_grafovi[i].velocity.printVektor();
-      // moving_grafovi[i].center.printVrh();
       moving_grafovi[i].shift(moving_grafovi[i].velocity.x * deltaTime * 60,
                               moving_grafovi[i].velocity.y * deltaTime * 60,
                               moving_grafovi[i].velocity.z * deltaTime * 60);
-      // force of gravity
-      moving_grafovi[i].velocity.z -= g * deltaTime;
 
-      // increment time
+      // gravity
+      moving_grafovi[i].velocity.z -= g * deltaTime;
+    }
+
+    // --- sphere-sphere collisions ---
+    for (int i = 0; i < moving_grafovi.size(); i++) {
+      for (int j = i + 1; j < moving_grafovi.size(); j++) {
+        Vektor n = oduzmi(moving_grafovi[j].center, moving_grafovi[i].center);
+        double dist = magnitude(n);
+        double rsum = moving_grafovi[i].radius + moving_grafovi[j].radius;
+
+        if (dist < rsum && dist > 1e-8) {
+          normaliziraj(n);
+
+          double m1 = moving_grafovi[i].mass;
+          double m2 = moving_grafovi[j].mass;
+          double invM1 = 1.0 / m1;
+          double invM2 = 1.0 / m2;
+
+          // relative velocity
+          Vektor rv = moving_grafovi[i].velocity - moving_grafovi[j].velocity;
+          double velAlongNormal = rv * n;
+
+          // only resolve if moving toward each other
+          if (velAlongNormal < 0) {
+            double j_imp = -(1 + restitution) * velAlongNormal;
+            j_imp /= (invM1 + invM2);
+
+            Vektor impulse = n * j_imp;
+            moving_grafovi[i].velocity =
+                moving_grafovi[i].velocity + impulse * invM1;
+            moving_grafovi[j].velocity =
+                moving_grafovi[j].velocity - impulse * invM2;
+          }
+
+          // positional correction (Baumgarte stabilization)
+          double penetration = rsum - dist;
+          double correctionMag =
+              max(penetration - slop, 0.0) / (invM1 + invM2);
+          Vektor correction = n * (correctionMag * percent);
+
+          moving_grafovi[i].shift(-correction.x * invM1, -correction.y * invM1,
+                                  -correction.z * invM1);
+          moving_grafovi[j].shift(correction.x * invM2, correction.y * invM2,
+                                  correction.z * invM2);
+        }
+      }
+    }
+
+    // --- collisions with floor (z = 0) ---
+    for (int i = 0; i < moving_grafovi.size(); i++) {
+      if (moving_grafovi[i].minVrh().z <= 0) {
+        double pen = 0.0 - moving_grafovi[i].minVrh().z;
+        if (pen > 0.0) {
+          moving_grafovi[i].shift(0, 0, pen + 0.001);
+        }
+        moving_grafovi[i].velocity.z *= -restitution;
+      }
+    }
+
+    // --- debug log ---
+    for (int i = 0; i < moving_grafovi.size(); i++) {
+      cout << i << " ";
+      moving_grafovi[i].velocity.printVektor();
       moving_grafovi[i].t += 0.01;
     }
   }
-void animateSceneCHATGPT(double deltaTime) {
-    // physics constants
-    const double restitution = 0.9; // perfectly elastic
-    const double slop = 0.01;       // tiny allowed overlap
-    const double percent = 1.0;     // push 100% of penetration out
-
-    // use multiple substeps for stability
-    int substeps = std::max(1, (int)ceil(deltaTime * 60.0 * 2.0)); // ~2 substeps per 1/60s
-    substeps = std::min(substeps, 8);
-    double dt = deltaTime / (double)substeps;
-
-    for (int step = 0; step < substeps; ++step) {
-        // 1) integrate motion
-        for (int i = 0; i < moving_grafovi.size(); ++i) {
-            moving_grafovi[i].shift(moving_grafovi[i].velocity.x * dt * 60.0,
-                                    moving_grafovi[i].velocity.y * dt * 60.0,
-                                    moving_grafovi[i].velocity.z * dt * 60.0);
-
-            // gravity
-            moving_grafovi[i].velocity.z -= g * dt;
-        }
-
-        // 2) sphere-sphere collisions
-        for (int i = 0; i < moving_grafovi.size(); ++i) {
-            for (int j = i + 1; j < moving_grafovi.size(); ++j) {
-                Vektor n = oduzmi(moving_grafovi[j].center, moving_grafovi[i].center);
-                double dist = magnitude(n);
-                double rsum = moving_grafovi[i].radius + moving_grafovi[j].radius;
-                double penetration = rsum - dist;
-
-                if (penetration > 0.0) {
-                    if (dist == 0.0) {
-                        n = Vektor(1.0, 0.0, 0.0);
-                        dist = 1.0;
-                    } else {
-                        normaliziraj(n);
-                    }
-
-                    double m1 = moving_grafovi[i].mass;
-                    double m2 = moving_grafovi[j].mass;
-                    double invM1 = 1.0 / m1;
-                    double invM2 = 1.0 / m2;
-
-                    // relative velocity
-                    Vektor rv = moving_grafovi[i].velocity - moving_grafovi[j].velocity;
-
-                    // normal component
-                    double velAlongNormal = rv * n;
-
-                    if (velAlongNormal < 0.0) {
-                        // compute impulse magnitude (perfectly elastic)
-                        double j_imp = -(1.0 + restitution) * velAlongNormal;
-                        j_imp /= (invM1 + invM2);
-
-                        Vektor impulse = n * j_imp;
-
-                        // apply impulse (only along normal → no tangential sticking)
-                        moving_grafovi[i].velocity = moving_grafovi[i].velocity + impulse * invM1;
-                        moving_grafovi[j].velocity = moving_grafovi[j].velocity - impulse * invM2;
-                    }
-
-                    // positional correction
-                    double correctionMag = std::max(penetration - slop, 0.0) / (invM1 + invM2);
-                    correctionMag *= percent;
-                    Vektor correction = n * correctionMag;
-
-                    moving_grafovi[i].shift(-correction.x * invM1,
-                                            -correction.y * invM1,
-                                            -correction.z * invM1);
-                    moving_grafovi[j].shift(correction.x * invM2,
-                                            correction.y * invM2,
-                                            correction.z * invM2);
-                }
-            }
-        }
-
-        // 3) collisions with floor z=0
-        for (int i = 0; i < moving_grafovi.size(); ++i) {
-            if (moving_grafovi[i].minVrh().z <= 0.0) {
-                double pen = 0.0 - moving_grafovi[i].minVrh().z;
-                if (pen > 0.0) {
-                    moving_grafovi[i].shift(0, 0, pen + 0.001);
-                }
-                moving_grafovi[i].velocity.z *= -restitution;
-            }
-        }
-    }
-
-    // debug logging
-    for (int i = 0; i < moving_grafovi.size(); i++) {
-        cout << i << " ";
-        moving_grafovi[i].velocity.printVektor();
-        moving_grafovi[i].t += 0.01;
-    }
-}
-
-
 };
 
 class Kocka : public Graf {
@@ -679,7 +658,6 @@ int main() {
   int f = 0;
   Kocka kocka1(0, 0, 0, 10000, 0, 0, 0);
   scena.addToStaticScene(kocka1);
-
   Kugla kugla1(10000, 0, 0, 0, 800, 0, 0, 900, 7, 13);
   scena.addToMovingScene(kugla1);
   /*
