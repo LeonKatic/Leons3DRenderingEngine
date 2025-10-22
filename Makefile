@@ -1,6 +1,6 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2 `sdl2-config --cflags`
-LDFLAGS = `sdl2-config --libs`
+LDFLAGS = `sdl2-config --libs -pthread`
 
 
 SRC = src/main.cpp

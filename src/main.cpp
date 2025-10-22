@@ -4,16 +4,16 @@
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_stdinc.h>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <iostream>
 #include <math.h>
-
+#include <pthread.h>
 #include <stdlib.h>
 #include <unistd.h>
+
 #include <vector>
 using namespace std;
-
-int idGlobal = 0;
 
 class Tocka {
 public:
@@ -80,12 +80,10 @@ Vektor operator*(double a, const Vektor &v) {
   return v * a; // reuse member operator*
 }
 
-Vektor cross(Vektor a, Vektor b) {
-  Vektor rez;
-  rez.x = a.y * b.z - a.z * b.y;
-  rez.y = a.z * b.x - a.x * b.z;
-  rez.z = a.x * b.y - a.y * b.x;
-  return rez;
+// cross product
+Vektor operator^(Vektor a, Vektor b) {
+  return Vektor(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z,
+                a.x * b.y - a.y * b.x);
 }
 double udaljenost(Vektor a, Vektor b) {
   double dx = a.x - b.x;
@@ -115,6 +113,60 @@ Vektor normalized(Vektor v) {
   }
   return rez;
 }
+Vektor closestLinePoint(Vektor point, Vektor a, Vektor b) {
+  Vektor d = b - a;
+  double t = ((point - a) * d) / (d * d); // projection along segment
+  if (t < 0)
+    t = 0;
+  else if (t > 1)
+    t = 1;
+  return a + d * t;
+}
+
+double closestLineDistance(Vektor point, Vektor a, Vektor b) {
+  Vektor closest = closestLinePoint(point, a, b);
+  return magnitude(point - closest);
+}
+Vektor closestTrianglePoint(Vektor point, Vektor a, Vektor b, Vektor c) {
+
+  Vektor n = normalized((b - a) ^ (c - a));
+  double dist = (point - a) * n;
+  Vektor proj = point - dist * n;
+
+  Vektor v0 = b - a;
+  Vektor v1 = c - a;
+  Vektor v2 = proj - a;
+
+  double d00 = v0 * v0;
+  double d01 = v0 * v1;
+  double d11 = v1 * v1;
+  double d20 = v2 * v0;
+  double d21 = v2 * v1;
+
+  double denom = d00 * d11 - d01 * d01;
+  double u = (d11 * d20 - d01 * d21) / denom;
+  double v = (d00 * d21 - d01 * d20) / denom;
+  double w = 1 - u - v;
+
+  if (u >= 0 and v >= 0 and w >= 0 and u <= 1 and v <= 1 and w <= 1) {
+    return proj;
+  }
+
+  Vektor pAB = closestLinePoint(point, a, b);
+  Vektor pBC = closestLinePoint(point, b, c);
+  Vektor pCA = closestLinePoint(point, c, a);
+
+  double dAB = magnitude(point - pAB);
+  double dBC = magnitude(point - pBC);
+  double dCA = magnitude(point - pCA);
+
+  if (dAB < dBC and dAB < dCA)
+    return pAB;
+  else if (dBC < dCA)
+    return pBC;
+  else
+    return pCA;
+}
 
 class Kamera {
 public:
@@ -134,7 +186,7 @@ public:
     this->desno.y =
         -this->n.x / sqrt(this->n.x * this->n.x + this->n.y * this->n.y);
     this->desno.z = 0;
-    this->gore = cross(this->n, this->desno);
+    this->gore = this->n ^ this->desno;
 
     normaliziraj(n);
     normaliziraj(gore);
@@ -235,7 +287,9 @@ public:
   double t = 0;
   double mass;
   vector<Vektor> vrhovi;
-  vector<pair<int, int>> bridovi;
+  vector<vector<int>> bridovi;
+  vector<vector<int>> faces;
+
   Vektor velocity;
 
   Graf(double mass, double v_x, double v_y, double v_z) {
@@ -258,19 +312,10 @@ public:
     }
   }
 
-  Vektor minVrh() {
-    Vektor min = this->vrhovi[0];
-    for (int i = 0; i < this->vrhovi.size(); i++) {
-      if (this->vrhovi[i].z < min.z)
-        min = this->vrhovi[i];
-    }
-    return min;
-  }
-
   void renderGraf(Kamera &kamera) {
     for (int i = 0; i < bridovi.size(); i++) {
-      Tocka a = kamera.Tocka3d_To_Tocka2d(vrhovi[bridovi[i].first]);
-      Tocka b = kamera.Tocka3d_To_Tocka2d(vrhovi[bridovi[i].second]);
+      Tocka a = kamera.Tocka3d_To_Tocka2d(vrhovi[bridovi[i][0]]);
+      Tocka b = kamera.Tocka3d_To_Tocka2d(vrhovi[bridovi[i][1]]);
       kamera.spojiTocke2dClipped(a, b, 255, 255, 255);
     }
   }
@@ -361,24 +406,9 @@ public:
     for (int i = 0; i < this->vrhovi.size(); i++) {
       Vektor point = this->vrhovi[i];
       Vektor p_rel = point - center;
-      this->vrhovi[i] = center + p_rel * cos(w) + cross(omega, p_rel) * sin(w) +
+      this->vrhovi[i] = center + p_rel * cos(w) + (omega ^ p_rel) * sin(w) +
                         omega * (omega * p_rel) * (1 - cos(w));
     }
-  }
-};
-
-class Povrsina {
-public:
-  Vektor normala;
-  Vektor tocka;
-
-  Povrsina(Vektor normala, Vektor tocka) {
-    this->normala = normala;
-    this->tocka = tocka;
-  };
-
-  double planeDistance(Vektor p) { 
-    return ((p - tocka) * normala) / magnitude(normala);
   }
 };
 
@@ -386,7 +416,7 @@ class Scena {
 public:
   vector<Graf> static_grafovi;
   vector<Kugla> moving_grafovi;
-  vector<Povrsina> povrsine;
+
   int crosshair = 5;
   double g;
   double t = 0;
@@ -394,6 +424,7 @@ public:
 
   void addToStaticScene(Graf graf) { static_grafovi.push_back(graf); }
   void addToMovingScene(Kugla graf) { moving_grafovi.push_back(graf); }
+
   void renderScene(Kamera &kamera, int delay) {
     for (int i = 0; i < static_grafovi.size(); i++) {
       static_grafovi[i].renderGraf(kamera);
@@ -429,68 +460,11 @@ public:
     b = kamera.Tocka3d_To_Tocka2d(z);
     kamera.spojiTocke2dClipped(a, b, 0, 0, 255);
   }
+
   void animateScene(double deltaTime) {
+    const double restitution = 0.6;
 
-    for (int i = 0; i < moving_grafovi.size(); i++) {
-
-      moving_grafovi[i].velocity.printVektor();
-      // moving_grafovi[i].center.printVrh();
-      moving_grafovi[i].shift(moving_grafovi[i].velocity.x * deltaTime * 60,
-                              moving_grafovi[i].velocity.y * deltaTime * 60,
-                              moving_grafovi[i].velocity.z * deltaTime * 60);
-      // force of gravity
-      moving_grafovi[i].velocity.z -= g * deltaTime;
-    }
-    // detect collision
-
-    for (int i = 0; i < moving_grafovi.size(); i++) {
-      for (int j = i + 1; j < moving_grafovi.size(); j++) {
-        double dist =
-            udaljenost(moving_grafovi[i].center, moving_grafovi[j].center);
-        double delta =
-            dist - (moving_grafovi[i].radius + moving_grafovi[j].radius);
-        if (delta < -1e-6) {
-          double m1 = moving_grafovi[i].mass;
-          double m2 = moving_grafovi[j].mass;
-          double m_uk = m1 + m2;
-
-          Vektor n_col = moving_grafovi[j].center - moving_grafovi[i].center;
-          normaliziraj(n_col);
-
-          Vektor v1 = moving_grafovi[i].velocity;
-          Vektor v2 = moving_grafovi[j].velocity;
-
-          // elastic collision
-          double v1n = (v1 * n_col);
-          double v2n = (v2 * n_col);
-
-          double p = 2.0 * (v1n - v2n) / (m1 + m2);
-
-          moving_grafovi[i].velocity = v1 - n_col * (p * m2);
-          moving_grafovi[j].velocity = v2 + n_col * (p * m1);
-
-          double correctionFactor = 0.5;
-          Vektor correction = n_col * (abs(delta) * correctionFactor);
-
-          moving_grafovi[i].shift(-correction.x * (m2 / m_uk),
-                                  -correction.y * (m2 / m_uk),
-                                  -correction.z * (m2 / m_uk));
-          moving_grafovi[j].shift(correction.x * (m1 / m_uk),
-                                  correction.y * (m1 / m_uk),
-                                  correction.z * (m1 / m_uk));
-        }
-      }
-    }
-
-
-  }
-  void animateSceneCHATGPT(double deltaTime) {
-    const double restitution =
-        0.9;                    // 1.0 = perfectly elastic, <1 = damped bounce
-    const double percent = 0.2; // positional correction strength (20%)
-    const double slop = 0.01;   // penetration tolerance
-
-    // --- integrate motion (gravity + movement) ---
+    // movement
     for (int i = 0; i < moving_grafovi.size(); i++) {
       moving_grafovi[i].rotate_around_v();
       moving_grafovi[i].shift(moving_grafovi[i].velocity.x * deltaTime * 60,
@@ -501,65 +475,71 @@ public:
       moving_grafovi[i].velocity.z -= g * deltaTime;
     }
 
-    // --- sphere-sphere collisions ---
-    for (int i = 0; i < moving_grafovi.size(); i++) {
-      for (int j = i + 1; j < moving_grafovi.size(); j++) {
-        Vektor n = moving_grafovi[i].center - moving_grafovi[j].center;
-        double dist = magnitude(n);
-        double rsum = moving_grafovi[i].radius + moving_grafovi[j].radius;
+    for (int iter = 0; iter < 5; iter++) { // multiple iterations for stability
+      for (int i = 0; i < moving_grafovi.size(); i++) {
+        for (int j = i + 1; j < moving_grafovi.size(); j++) {
+          Vektor diff = moving_grafovi[i].center - moving_grafovi[j].center;
+          double dist = magnitude(diff);
+          double rsum = moving_grafovi[i].radius + moving_grafovi[j].radius;
 
-        if (dist < rsum && dist > 1e-8) {
-          normaliziraj(n);
+          if (dist < rsum && dist > 0) {
+            Vektor n = (1 / dist) * diff;
 
-          double m1 = moving_grafovi[i].mass;
-          double m2 = moving_grafovi[j].mass;
-          double invM1 = 1.0 / m1;
-          double invM2 = 1.0 / m2;
+            Vektor v1 = moving_grafovi[i].velocity;
+            Vektor v2 = moving_grafovi[j].velocity;
+            double m1 = moving_grafovi[i].mass;
+            double m2 = moving_grafovi[j].mass;
 
-          // relative velocity
-          Vektor rv = moving_grafovi[i].velocity - moving_grafovi[j].velocity;
+            double vrel = (v1 - v2) * n;
+            if (vrel < 0) {
+              double jImpulse =
+                  -(1.0 + restitution) * vrel / (1.0 / m1 + 1.0 / m2);
+              moving_grafovi[i].velocity = v1 + (jImpulse / m1) * n;
+              moving_grafovi[j].velocity = v2 - (jImpulse / m2) * n;
+            }
 
-          double velAlongNormal = rv * n;
-
-          // only resolve if moving toward each other
-          if (velAlongNormal < 0) {
-            double j_imp =
-                -(1 + restitution) * velAlongNormal / (invM1 + invM2);
-
-            Vektor impulse = n * j_imp;
-            moving_grafovi[i].velocity =
-                moving_grafovi[i].velocity + impulse * invM1;
-            moving_grafovi[j].velocity =
-                moving_grafovi[j].velocity - impulse * invM2;
+            // position correction with slop
+            const double percent = 0.8; // solve 80% this frame
+            const double slop = 0.01;
+            double penetration = rsum - dist;
+            if (penetration > slop) {
+              penetration = (penetration - slop) * percent;
+              Vektor correction = (penetration / (m1 + m2)) * n;
+              moving_grafovi[i].shift(correction.x * m2, correction.y * m2,
+                                      correction.z * m2);
+              moving_grafovi[j].shift(-correction.x * m1, -correction.y * m1,
+                                      -correction.z * m1);
+            }
           }
-
-          // positional correction (Baumgarte stabilization)
-          double penetration = rsum - dist;
-          double correctionMag = max(penetration - slop, 0.0) / (invM1 + invM2);
-          Vektor correction = n * (correctionMag * percent);
-
-          moving_grafovi[i].shift(-correction.x * invM1, -correction.y * invM1,
-                                  -correction.z * invM1);
-          moving_grafovi[j].shift(correction.x * invM2, correction.y * invM2,
-                                  correction.z * invM2);
         }
       }
     }
 
+    // collision with static objects
     for (int i = 0; i < moving_grafovi.size(); i++) {
-      if (moving_grafovi[i].minVrh().z <= 0) {
-        double pen = 0.0 - moving_grafovi[i].minVrh().z;
-        if (pen > 0.0) {
-          moving_grafovi[i].shift(0, 0, pen + 0.001);
-        }
-        moving_grafovi[i].velocity.z *= -restitution;
-      }
-    }
 
-    for (int i = 0; i < moving_grafovi.size(); i++) {
-      cout << i << " ";
-      moving_grafovi[i].velocity.printVektor();
-      moving_grafovi[i].t += 0.01;
+      for (int j = 0; j < static_grafovi.size(); j++) {
+        for (int k = 0; k < static_grafovi[j].faces.size(); k++) {
+          vector<int> trojka = static_grafovi[j].faces[k];
+
+          Vektor t1 = static_grafovi[j].vrhovi[trojka[0]];
+          Vektor t2 = static_grafovi[j].vrhovi[trojka[1]];
+          Vektor t3 = static_grafovi[j].vrhovi[trojka[2]];
+          Vektor impactPoint =
+              closestTrianglePoint(moving_grafovi[i].center, t1, t2, t3);
+          double pen = udaljenost(impactPoint, moving_grafovi[i].center) -
+                       moving_grafovi[i].radius;
+          if (pen < 0) {
+
+            Vektor n = normalized(impactPoint - moving_grafovi[i].center);
+            Vektor vel = moving_grafovi[i].velocity;
+            Vektor korekcija1 = pen * n;
+            moving_grafovi[i].shift(korekcija1.x, korekcija1.y, korekcija1.z);
+            moving_grafovi[i].velocity =
+                vel - (1 + restitution) * (vel * n) * n;
+          }
+        }
+      }
     }
   }
 };
@@ -585,6 +565,44 @@ public:
     }
     this->bridovi = {{0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7},
                      {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+
+    this->faces = {/*{0, 2, 6}, {0, 6, 4},*/ {1, 5, 7},
+                   {1, 7, 3},
+                   {4, 6, 7},
+                   {4, 7, 5},
+                   {0, 1, 3},
+                   {0, 3, 2},
+                   {0, 4, 5},
+                   {0, 5, 1},
+                   {2, 3, 7},
+                   {2, 7, 6}};
+  }
+};
+
+class Kocka1 : public Graf {
+public:
+  int velicina;
+  double xsred;
+  double ysred;
+  double zsred;
+
+  Kocka1(double v_x, double v_y, double v_z, double velicina, double xsred,
+         double ysred, double zsred) {
+    this->velocity.x = v_x;
+    this->velocity.y = v_y;
+    this->velocity.z = v_z;
+    int a[8][3] = {{1, 1, 3},  {1, 1, -1},  {1, -1, 3},  {1, -1, -1},
+                   {-1, 1, 3}, {-1, 1, -1}, {-1, -1, 3}, {-1, -1, -1}};
+    for (int i = 0; i < 8; i++) {
+      this->vrhovi.push_back(Vektor(xsred + a[i][0] * velicina / 2,
+                                    ysred + a[i][1] * velicina / 2,
+                                    zsred + a[i][2] * velicina / 2));
+    }
+    this->bridovi = {{0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7},
+                     {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+
+    this->faces = {{1, 5, 7}, {1, 7, 3}, {4, 6, 7}, {4, 7, 5}, {0, 1, 3},
+                   {0, 3, 2}, {0, 4, 5}, {0, 5, 1}, {2, 3, 7}, {2, 7, 6}};
   }
 };
 
@@ -605,7 +623,7 @@ int main() {
   int sprinting = 1;
   SDL_Event event;
   double rotationSpeed = 1;
-  Scena scena(15);
+  Scena scena(7 * 9.81);
   int raspon = 100000;
 
   int previosMouseY = 1080 / 2;
@@ -622,56 +640,45 @@ int main() {
   double velocity = 0;
   double pod = 0;
   int f = 0;
-  Kocka kocka1(0, 0, 0, 10000, 0, 0, 0);
+  Kocka kocka1(0, 0, 0, 4000, 0, 0, 0);
   scena.addToStaticScene(kocka1);
-  Kugla kugla1(Vektor(0, 0, 1), 0, 10000, 0, 0, 0, 800, 0, 0, 900, 7, 13);
-  scena.addToMovingScene(kugla1);
-  /*
-    Kugla kugla2(200, 30, 0, 0, 500, -2100, -40, 500, 5, 10);
-    scena.addToMovingScene(kugla2);
 
-    Kugla kugla3(200, 30, 0, 0, 500, 0, 0, 0, 5, 10);
-    scena.addToMovingScene(kugla3);*/
+  /*Kugla kugla1(Vektor(0, 0, 1), 0, 10000, 0, 0, 0, 800, 0, 0, 900, 7, 13);
+  scena.addToMovingScene(kugla1);*/
+  /* Povrsina p1 = Povrsina(Vektor(0.5, 0, 1), Vektor(0, 0, -5000));
+   Povrsina p2 = Povrsina(Vektor(0, 0, -1), Vektor(0, 0, 5000));
+   Povrsina p3 = Povrsina(Vektor(0, 1, 0), Vektor(0, -5000, 0));
+   Povrsina p4 = Povrsina(Vektor(0, -1, 0), Vektor(0, 5000, 0));
+   Povrsina p5 = Povrsina(Vektor(1, 0, 0), Vektor(-5000, 0, 0));
+   Povrsina p6 = Povrsina(Vektor(-1, 0, 0), Vektor(5000, 0, 0));
+
+   scena.addToPovrsine(p1);
+   scena.addToPovrsine(p2);
+   scena.addToPovrsine(p3);
+   scena.addToPovrsine(p4);
+   scena.addToPovrsine(p5);
+   scena.addToPovrsine(p6);*/
+
   Uint64 NOW = SDL_GetPerformanceCounter();
   Uint64 LAST = 0;
   double deltaTime = 0;
+
   while (running) {
-    /*if (velocity < 1000) {
-      velocity += (double)1 / 5;
+    /*if (f == 4) {
+      Kugla kugla(Vektor(0, 0, 1), 0, 10, 10, 0, 0, 200, 0, 0, 4000, 5, 10);
+      scena.addToMovingScene(kugla);
+      f = 0;
     }
-
-    if (scena.grafovi[0].minVrh().z < pod) {
-      scena.grafovi[0].shift(0, 0, velocity);
-    }
-    if (scena.grafovi[0].minVrh().z > pod) {
-      scena.grafovi[0].shift(0, 0, pod - scena.grafovi[0].minVrh().z);
-    }
-
-    scena.grafovi[0].shift(5, 0, 0);
-    t++;
-    if (freeze == false) {
-      f++;
-      if (f > 50) {
-        cout << f << endl;
-        Kugla kugla1(100, -30, 0, 0, 200, 2100, 0, 500, 5, 10);
-        scena.addToMovingScene(kugla1);
-
-        Kugla kugla1(rand()%400,rand() % 90 - 45, rand() % 90 - 45, rand() %
-    100, rand() % 200+100, rand() % 900 - 450, rand() % 900 - 450, rand() % 900
-    - 450, 5, 10); // vx,vy,vz, radius, cx,cy,cz, rings, sectors
-        scena.addToMovingScene(kugla1);
-
-        f = 0;
-      }
-    }*/
-
+    f++;*/
     while (SDL_PollEvent(&event)) {
 
       if (event.type == SDL_QUIT) {
         running = false;
       } else if (event.type == SDL_KEYDOWN &&
                  event.key.keysym.sym == SDLK_ESCAPE) {
+
         running = false;
+
       } else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_p) {
         if (freeze == true)
           freeze = false;
@@ -744,7 +751,7 @@ int main() {
     deltaTime /= 1000;
 
     if (freeze == false) {
-      scena.animateSceneCHATGPT(deltaTime);
+      scena.animateScene(deltaTime);
     }
     scena.renderScene(kamera, 16);
   }
